@@ -1,0 +1,57 @@
+"""Environment check: ffmpeg, whisper backend, YuNet model download."""
+
+import shutil
+import sys
+import urllib.request
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+MODEL_PATH = ROOT / "models" / "face_detection_yunet_2023mar.onnx"
+MODEL_URL = (
+    "https://github.com/opencv/opencv_zoo/raw/main/models/"
+    "face_detection_yunet/face_detection_yunet_2023mar.onnx"
+)
+
+
+def check(label: str, ok: bool, detail: str = "") -> bool:
+    print(f"  {'OK ' if ok else 'FAIL'}  {label}" + (f" — {detail}" if detail else ""))
+    return ok
+
+
+def main() -> None:
+    print("aiclipper doctor\n")
+    ok = True
+
+    ok &= check("ffmpeg", shutil.which("ffmpeg") is not None)
+    ok &= check("ffprobe", shutil.which("ffprobe") is not None)
+
+    try:
+        import mlx_whisper  # noqa: F401
+        ok &= check("whisper backend", True, "mlx-whisper (Apple Silicon)")
+        print("        note: first transcription downloads ~1.6 GB model weights from HuggingFace")
+    except ImportError:
+        try:
+            import faster_whisper  # noqa: F401
+            ok &= check("whisper backend", True, "faster-whisper")
+        except ImportError:
+            ok &= check("whisper backend", False, "run: uv sync")
+
+    if not MODEL_PATH.exists():
+        print(f"  ...   downloading YuNet model (~345 KB) -> {MODEL_PATH}")
+        MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
+        urllib.request.urlretrieve(MODEL_URL, MODEL_PATH)
+    try:
+        import cv2
+        det = cv2.FaceDetectorYN.create(str(MODEL_PATH), "", (320, 320))
+        ok &= check("YuNet face detector", det is not None, MODEL_PATH.name)
+    except Exception as e:  # noqa: BLE001
+        ok &= check("YuNet face detector", False, str(e))
+
+    print()
+    if not ok:
+        sys.exit("doctor: FAILED — fix the items above")
+    print("doctor: all checks passed")
+
+
+if __name__ == "__main__":
+    main()
