@@ -67,7 +67,7 @@ def main() -> None:
 
     if not audio.exists() or args.force:
         ffmpeg.run(
-            ["ffmpeg", "-y", "-i", str(source), "-vn", "-ac", "1", "-ar", "16000",
+            [ffmpeg.FFMPEG, "-y", "-i", str(source), "-vn", "-ac", "1", "-ar", "16000",
              "-c:a", "pcm_s16le", str(audio)],
             "audio extraction",
         )

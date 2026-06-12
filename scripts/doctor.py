@@ -1,9 +1,12 @@
 """Environment check: ffmpeg, whisper backend, YuNet model download."""
 
-import shutil
+import subprocess
 import sys
 import urllib.request
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from lib import ffmpeg  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 MODEL_PATH = ROOT / "models" / "face_detection_yunet_2023mar.onnx"
@@ -22,8 +25,14 @@ def main() -> None:
     print("aiclipper doctor\n")
     ok = True
 
-    ok &= check("ffmpeg", shutil.which("ffmpeg") is not None)
-    ok &= check("ffprobe", shutil.which("ffprobe") is not None)
+    ok &= check("ffmpeg", ffmpeg.FFMPEG is not None, str(ffmpeg.FFMPEG))
+    ok &= check("ffprobe", ffmpeg.FFPROBE is not None)
+    if ffmpeg.FFMPEG:
+        filters = subprocess.run(
+            [ffmpeg.FFMPEG, "-hide_banner", "-filters"], capture_output=True, text=True
+        ).stdout
+        ok &= check("libass (caption burning)", " ass " in filters)
+        ok &= check("sendcmd (dynamic crop)", "sendcmd" in filters)
 
     try:
         import mlx_whisper  # noqa: F401

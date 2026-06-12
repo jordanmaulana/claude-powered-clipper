@@ -9,6 +9,7 @@ dependencies = [
     "opencv-python>=4.10",
     "mlx-whisper>=0.4; sys_platform == 'darwin' and platform_machine == 'arm64'",
     "faster-whisper>=1.1; sys_platform != 'darwin' or platform_machine != 'arm64'",
+    "static-ffmpeg>=3.0",
 ]
 
 [dependency-groups]

@@ -7,10 +7,22 @@ import sys
 from pathlib import Path
 
 
+def _resolve() -> tuple[str | None, str | None]:
+    # static-ffmpeg ships a full build (libass for caption burning); system
+    # ffmpeg builds (e.g. current brew) may lack the ass/subtitles filters.
+    try:
+        from static_ffmpeg import run as static_run
+        return static_run.get_or_fetch_platform_executables_else_raise()
+    except Exception:  # noqa: BLE001
+        return shutil.which("ffmpeg"), shutil.which("ffprobe")
+
+
+FFMPEG, FFPROBE = _resolve()
+
+
 def require_binaries() -> None:
-    for name in ("ffmpeg", "ffprobe"):
-        if shutil.which(name) is None:
-            sys.exit(f"error: {name} not found on PATH (brew install ffmpeg)")
+    if not FFMPEG or not FFPROBE:
+        sys.exit("error: ffmpeg/ffprobe not found (uv sync, or brew install ffmpeg)")
 
 
 def run(cmd: list[str], desc: str = "") -> None:
@@ -24,7 +36,7 @@ def run(cmd: list[str], desc: str = "") -> None:
 def probe(path: Path) -> dict:
     """Return {width, height, fps, duration, has_audio} for a media file."""
     proc = subprocess.run(
-        ["ffprobe", "-v", "error", "-show_streams", "-show_format", "-of", "json", str(path)],
+        [FFPROBE, "-v", "error", "-show_streams", "-show_format", "-of", "json", str(path)],
         capture_output=True, text=True,
     )
     if proc.returncode != 0:

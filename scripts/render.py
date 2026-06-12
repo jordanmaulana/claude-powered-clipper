@@ -54,7 +54,7 @@ def render_clip(clip: dict, words: list[dict], meta: dict, workdir: Path,
     script = clip_dir / "pass_a_filter.txt"
     script.write_text(graph)
     ffmpeg.run(
-        ["ffmpeg", "-y", "-i", str(source), "-filter_complex_script", str(script),
+        [ffmpeg.FFMPEG, "-y", "-i", str(source), "-filter_complex_script", str(script),
          "-map", "[v]", "-map", "[a]", "-c:v", "libx264", "-crf", "14", "-preset", "fast",
          "-c:a", "aac", "-b:a", "192k", str(flat)],
         "Pass A (silence cut)",
@@ -100,7 +100,7 @@ def render_clip(clip: dict, words: list[dict], meta: dict, workdir: Path,
     script_b = clip_dir / "pass_b_filter.txt"
     script_b.write_text(graph_b)
     ffmpeg.run(
-        ["ffmpeg", "-y", "-i", str(flat), "-filter_complex_script", str(script_b),
+        [ffmpeg.FFMPEG, "-y", "-i", str(flat), "-filter_complex_script", str(script_b),
          "-map", "[v]", "-map", "0:a", "-af", "loudnorm=I=-16:TP=-1.5:LRA=11",
          "-c:v", "libx264", "-crf", "19", "-preset", "medium", "-pix_fmt", "yuv420p",
          "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(final)],
