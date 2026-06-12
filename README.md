@@ -1,4 +1,5 @@
 # aiclipper
+Just tell your Claude Code to generate N clips of a Youtube URL and voila :v
 
 YouTube → N vertical short clips (1080x1920), with burned captions, silence removal,
 and face-tracked cropping. No UI: open this repo in Claude Code and say
