@@ -48,9 +48,9 @@ def build_markdown(segments: list[dict], meta: dict) -> str:
         if not text:
             continue
         if block_start is None:
-            block_start = seg["start"]
+            block_start = seg["s"]
         block_words.extend(text.split())
-        if len(block_words) >= BLOCK_WORDS or seg["end"] - block_start >= BLOCK_SECONDS:
+        if len(block_words) >= BLOCK_WORDS or seg["e"] - block_start >= BLOCK_SECONDS:
             lines.append(f"[{fmt_ts(block_start)}] {' '.join(block_words)}")
             block_start, block_words = None, []
     if block_words:
