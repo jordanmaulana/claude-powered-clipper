@@ -1,4 +1,4 @@
-# aiclipper
+# claude-powered-clipper
 Just tell your Claude Code to generate N number of clips of a Youtube URL and voila :v
 
 YouTube → N vertical short clips (1080x1920), with burned captions, silence removal,
