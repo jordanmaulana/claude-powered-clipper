@@ -1,5 +1,7 @@
 """Word timestamps (edited timeline) -> phrase chunks -> styled .ass subtitle file."""
 
+import re
+
 FONT = "Arial Black"
 FONT_SIZE = 72
 MAX_WORDS = 4
@@ -23,6 +25,16 @@ Style: Cap,{FONT},{FONT_SIZE},&H00FFFFFF,&H0000FFFF,&H00000000,&H80000000,-1,0,0
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
+
+
+# Remove sentence punctuation from caption display text, but keep . and ,
+# when they separate digits (number separators: 1.500.000, decimal 9,5).
+_DROP = re.compile(r"[?!;:]|(?<!\d)[.,]|[.,](?!\d)")
+
+
+def clean_caption(text: str) -> str:
+    text = _DROP.sub("", text)
+    return re.sub(r"\s{2,}", " ", text).strip()
 
 
 def ass_time(t: float) -> str:
@@ -71,7 +83,8 @@ def chunk_phrases(words: list[dict]) -> list[dict]:
 def build_ass(words: list[dict]) -> str:
     events = []
     for p in chunk_phrases(words):
-        text = p["text"].upper() if UPPERCASE else p["text"]
+        text = clean_caption(p["text"])
+        text = text.upper() if UPPERCASE else text
         text = text.replace("{", "(").replace("}", ")")  # ASS override-tag chars
         events.append(
             f"Dialogue: 0,{ass_time(p['s'])},{ass_time(p['e'])},Cap,,0,0,0,,{text}"

@@ -56,6 +56,8 @@ hour-long video may yield 15+ clips, a thin one only 2–3. Do not stop after fi
 Selection criteria:
 - self-contained insight or story — no missing context, complete sentences at both ends
 - strong hook in the first 3 seconds
+- summarizeable — the clip delivers one clear insight/takeaway you can state in 1–2
+  sentences. If you can't state it, drop the clip.
 - 20–60 s per clip (before silence removal)
 - `[m:ss]` markers are block starts (~1 min resolution); interpolate within a block by
   word position to estimate start/end. Times only need to be roughly right — render.py
@@ -69,18 +71,24 @@ Write `work/<id>/clips.json`:
   "defaults": {"max_gap": 0.5, "pad": 0.15},
   "clips": [
     {"id": 1, "slug": "kebab-case-max-40-chars", "title": "Posting-ready title",
-     "hook": "why this clip works", "start": 312.0, "end": 371.0}
+     "hook": "why this clip works", "summary": "the one insight the viewer takes away",
+     "start": 312.0, "end": 371.0}
   ]
 }
 ```
+
+`hook` is your internal rationale (why the clip works); `summary` is the viewer-facing
+insight — render.py writes it to `output/<id>/clip_NN_<slug>.md`. **Every clip needs a
+non-empty `summary`** or render fails that clip.
 
 ```bash
 # 5. Render — silence cut, face-tracked 9:16 crop, captions, -> output/<id>/
 uv run scripts/render.py work/<id>
 ```
 
-**6. Report** a table to the user: file, title, duration. Mention any clip that fell back
-to `mode=center` (no face found — normal for slides/B-roll).
+**6. Report** a table to the user: file, title, duration. Each clip also gets a
+`clip_NN_<slug>.md` caption (title + summary) beside its mp4. Mention any clip that fell
+back to `mode=center` (no face found — normal for slides/B-roll).
 
 ## Iterating on feedback
 
@@ -99,6 +107,7 @@ to `mode=center` (no face found — normal for slides/B-roll).
 - `work/<id>/clips.json` — what you write
 - `work/<id>/clips/NN/` — per-clip debug: keep.json (cut intervals), captions.ass, crop.cmd
 - `output/<id>/clip_NN_<slug>.mp4` — deliverables
+- `output/<id>/clip_NN_<slug>.md` — insight caption (title + summary)
 
 ## Troubleshooting
 

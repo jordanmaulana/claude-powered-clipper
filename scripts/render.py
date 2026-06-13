@@ -22,6 +22,8 @@ def load_json(path: Path) -> dict:
 def validate(clip: dict, duration: float) -> None:
     if not 0 <= clip["start"] < clip["end"] <= duration + 1:
         raise ValueError(f"range {clip['start']}-{clip['end']} outside video (0-{duration:.0f}s)")
+    if not clip.get("summary", "").strip():
+        raise ValueError(f"clip {clip['id']} has no 'summary' — every clip must state its insight")
     if clip["end"] - clip["start"] > 120:
         print(f"  warn: clip {clip['id']} is {clip['end'] - clip['start']:.0f}s before gap removal (>120s)")
 
@@ -114,8 +116,14 @@ def render_clip(clip: dict, words: list[dict], meta: dict, workdir: Path,
          "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(final)],
         "Pass B (frame + captions)", clip_duration, clip_dir / "pass_b.log",
     )
+
+    # Insight caption: title + the viewer-facing takeaway, beside the mp4
+    md_path = final.with_suffix(".md")
+    md_path.write_text(f"# {clip['title']}\n\n{clip['summary'].strip()}\n")
+
     return {
         "path": final,
+        "md": md_path,
         "duration": clip_duration,
         "cuts": len(intervals) - 1,
         "mode": mode,
