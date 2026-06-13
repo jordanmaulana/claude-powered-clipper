@@ -5,6 +5,9 @@ import json
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from lib.correct import merge_split_numbers
+
 DEFAULT_MODEL = "mlx-community/whisper-large-v3-turbo"
 BLOCK_WORDS = 50
 BLOCK_SECONDS = 60.0
@@ -91,6 +94,9 @@ def main() -> None:
                 if s["text"].strip()
             ],
         }
+        transcript, merged = merge_split_numbers(transcript)
+        if merged:
+            print(f"merged {merged} split number token(s)")
         out_json.write_text(json.dumps(transcript, ensure_ascii=False))
 
     transcript = json.loads(out_json.read_text())
