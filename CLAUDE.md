@@ -1,7 +1,7 @@
 # YouTube AI Clipper
 
-This repo turns a YouTube URL into N vertical short clips (1080x1920, burned captions,
-silence removed, face-tracked crop). There is no app — **Claude Code is the orchestrator**:
+This repo turns a YouTube URL into vertical short clips — one per qualifying segment,
+however many that is (1080x1920, burned captions, silence removed, face-tracked crop). There is no app — **Claude Code is the orchestrator**:
 you run the scripts below and you make the one creative decision (which segments to clip).
 
 ## Setup (once per machine)
@@ -26,11 +26,13 @@ uv run scripts/transcribe.py work/<id>
 
 **3. Select clips (your job).** Read `work/<id>/transcript.md`. If it is long (>1500 lines),
 read in chunks with offset/limit and note candidate moments per chunk before deciding.
+Select **every** segment that meets the criteria below — there is no target count; a dense
+hour-long video may yield 15+ clips, a thin one only 2–3. Do not stop after finding "enough".
 
 Selection criteria:
 - self-contained insight or story — no missing context, complete sentences at both ends
 - strong hook in the first 3 seconds
-- 20–90 s per clip (before silence removal)
+- 20–60 s per clip (before silence removal)
 - `[m:ss]` markers are block starts (~1 min resolution); interpolate within a block by
   word position to estimate start/end. Times only need to be roughly right — render.py
   snaps to word boundaries (±0.5 s).

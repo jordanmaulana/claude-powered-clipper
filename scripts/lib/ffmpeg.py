@@ -33,6 +33,32 @@ def run(cmd: list[str], desc: str = "") -> None:
         sys.exit(f"error: {desc or cmd[0]} failed:\n{tail}")
 
 
+def run_with_progress(cmd: list[str], desc: str, total_s: float, log_path: Path) -> None:
+    """Run ffmpeg with a live percentage line on stdout; full stderr -> log_path."""
+    full = [cmd[0], "-progress", "pipe:1", "-nostats", *cmd[1:]]
+    tty = sys.stdout.isatty()
+    total = max(total_s, 0.01)
+    last_pct = -10.0
+    with open(log_path, "w") as log:
+        proc = subprocess.Popen(full, stdout=subprocess.PIPE, stderr=log, text=True)
+        for line in proc.stdout:
+            key, _, val = line.strip().partition("=")
+            # out_time_ms is ALSO microseconds (ffmpeg quirk); val may be "N/A"
+            if key in ("out_time_us", "out_time_ms") and val.lstrip("-").isdigit():
+                pct = min(100.0, int(val) / 1e6 / total * 100)
+                if tty:
+                    print(f"\r  {desc}: {pct:5.1f}%", end="", flush=True)
+                elif pct - last_pct >= 10:
+                    print(f"  {desc}: {pct:.0f}%", flush=True)
+                    last_pct = pct
+        proc.wait()
+    if tty:
+        print()  # terminate the \r line (success or failure)
+    if proc.returncode != 0:
+        tail = "\n".join(log_path.read_text().splitlines()[-15:])
+        sys.exit(f"error: {desc} failed:\n{tail}")
+
+
 def probe(path: Path) -> dict:
     """Return {width, height, fps, duration, has_audio} for a media file."""
     proc = subprocess.run(

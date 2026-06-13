@@ -47,17 +47,18 @@ def render_clip(clip: dict, words: list[dict], meta: dict, workdir: Path,
 
     intervals = timeline.keep_intervals(clip_words, max_gap=args.gap, pad=args.pad)
     (clip_dir / "keep.json").write_text(json.dumps(intervals))
+    clip_duration = timeline.total_duration(intervals)
 
     # Pass A: cut silence gaps -> flat 16:9 intermediate on the edited timeline
     flat = clip_dir / "clip_flat.mp4"
     graph = ffmpeg.cut_filtergraph(intervals, meta["fps"])
     script = clip_dir / "pass_a_filter.txt"
     script.write_text(graph)
-    ffmpeg.run(
+    ffmpeg.run_with_progress(
         [ffmpeg.FFMPEG, "-y", "-i", str(source), "-filter_complex_script", str(script),
          "-map", "[v]", "-map", "[a]", "-c:v", "libx264", "-crf", "14", "-preset", "fast",
          "-c:a", "aac", "-b:a", "192k", str(flat)],
-        "Pass A (silence cut)",
+        "Pass A (silence cut)", clip_duration, clip_dir / "pass_a.log",
     )
 
     # Captions: remap word times onto the edited timeline, then chunk
@@ -77,7 +78,14 @@ def render_clip(clip: dict, words: list[dict], meta: dict, workdir: Path,
         filters.append(f"scale={OUT_W}:{OUT_H}:force_original_aspect_ratio=increase,"
                        f"crop={OUT_W}:{OUT_H}")
     else:
-        result = facetrack.track(flat, MODEL)
+        tty = sys.stdout.isatty()
+        on_progress = (
+            (lambda f: print(f"\r  face tracking: {f * 100:5.1f}%", end="", flush=True))
+            if tty else None
+        )
+        result = facetrack.track(flat, MODEL, on_progress)
+        if tty:
+            print("\r  face tracking: 100.0%")
         mode = result["mode"]
         x0 = result["x"][0]
         crop = f"crop=w={result['crop_w']}:h={result['crop_h']}:x={x0}:y=0"
@@ -99,16 +107,16 @@ def render_clip(clip: dict, words: list[dict], meta: dict, workdir: Path,
     graph_b = f"[0:v]{','.join(filters)}[v]"
     script_b = clip_dir / "pass_b_filter.txt"
     script_b.write_text(graph_b)
-    ffmpeg.run(
+    ffmpeg.run_with_progress(
         [ffmpeg.FFMPEG, "-y", "-i", str(flat), "-filter_complex_script", str(script_b),
          "-map", "[v]", "-map", "0:a", "-af", "loudnorm=I=-16:TP=-1.5:LRA=11",
          "-c:v", "libx264", "-crf", "19", "-preset", "medium", "-pix_fmt", "yuv420p",
          "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(final)],
-        "Pass B (frame + captions)",
+        "Pass B (frame + captions)", clip_duration, clip_dir / "pass_b.log",
     )
     return {
         "path": final,
-        "duration": timeline.total_duration(intervals),
+        "duration": clip_duration,
         "cuts": len(intervals) - 1,
         "mode": mode,
     }
@@ -143,9 +151,9 @@ def main() -> None:
             sys.exit(f"error: no clip with id {args.clip} in clips.json")
 
     results, failures = [], []
-    for clip in clips:
+    for i, clip in enumerate(clips, 1):
         label = f"clip {clip['id']:02d} ({clip['slug']})"
-        print(f"rendering {label}...")
+        print(f"[{i}/{len(clips)}] rendering {label}...")
         try:
             validate(clip, meta["duration"])
             r = render_clip(clip, transcript["words"], meta, args.workdir, outdir, args)

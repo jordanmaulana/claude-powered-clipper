@@ -4,6 +4,7 @@ Operates on the already-cut clip (edited timeline), so no timestamp remapping he
 """
 
 from pathlib import Path
+from typing import Callable
 
 import cv2
 import numpy as np
@@ -25,7 +26,9 @@ def even(x: float) -> int:
     return int(round(x / 2)) * 2
 
 
-def _detect_centers(video: Path, model: Path) -> tuple[list[float], list[float | None], dict]:
+def _detect_centers(video: Path, model: Path,
+                    on_progress: Callable[[float], None] | None = None,
+                    ) -> tuple[list[float], list[float | None], dict]:
     """Sample frames at ~SAMPLE_HZ, return (times, center_x or None per sample, video info)."""
     cap = cv2.VideoCapture(str(video))
     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
@@ -69,6 +72,8 @@ def _detect_centers(video: Path, model: Path) -> tuple[list[float], list[float |
         times.append(frame_idx / fps)
         centers.append(center)
         frame_idx += 1
+        if on_progress and len(times) % 25 == 0:
+            on_progress(frame_idx / max(1, n_frames))
     cap.release()
     info = {"fps": fps, "width": width, "height": height, "n_frames": n_frames}
     return times, centers, info
@@ -114,13 +119,14 @@ def _smooth(times: list[float], centers: list[float], width: float) -> list[floa
     return out
 
 
-def track(video: Path, model: Path) -> dict:
+def track(video: Path, model: Path,
+          on_progress: Callable[[float], None] | None = None) -> dict:
     """Compute per-frame crop x positions for a 9:16 crop of `video`.
 
     Returns {"mode": "tracked"|"center", "crop_w", "crop_h", "fps", "n_frames",
              "x": [per-frame int], "detection_rate": float}
     """
-    times, raw, info = _detect_centers(video, model)
+    times, raw, info = _detect_centers(video, model, on_progress)
     width, height = info["width"], info["height"]
     crop_w = min(even(height * 9 / 16), even(width))
     n_frames = info["n_frames"]
