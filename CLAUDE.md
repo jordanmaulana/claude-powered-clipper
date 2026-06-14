@@ -81,6 +81,13 @@ Write `work/<id>/clips.json`:
 insight — render.py writes it to `output/<id>/clip_NN_<slug>.md`. **Every clip needs a
 non-empty `summary`** or render fails that clip.
 
+Write `summary` so it does not read as AI-generated:
+- One or two plain sentences stating the actual takeaway, like you would tell a friend.
+- No `;`, no `—`/`–`/`--` dashes (render.py rejects these). Use a short sentence or a comma.
+- Skip AI-tell scaffolding: `sehingga menjadi`, `hal ini menunjukkan`, `dalam dunia yang`,
+  `bukan hanya ... tetapi juga`, and the formulaic `X adalah Y, sehingga Z` shape.
+- Don't restate the title and don't describe the clip (`video ini membahas`) — state the insight.
+
 ```bash
 # 5. Render — silence cut, face-tracked 9:16 crop, captions, -> output/<id>/
 uv run scripts/render.py work/<id>
@@ -95,6 +102,8 @@ back to `mode=center` (no face found — normal for slides/B-roll).
 - Re-render one clip after editing clips.json: `render.py work/<id> --clip 3`
 - Silence aggressiveness: `--gap 0.4` (tighter) / `--pad 0.2` (more breathing room)
 - Face-track tuning preview: `--debug` writes `work/<id>/clips/NN/track_debug.mp4`
+  (yellow = crop window, gray = detected faces, green = active speaker + lip-motion score)
+- Disable speaker switching: `--no-active-speaker` (v1 single-subject crop)
 - All stages cache; `--force` re-runs download/transcribe
 
 ## Files
@@ -114,4 +123,7 @@ back to `mode=center` (no face found — normal for slides/B-roll).
 - Download fails (age/region/members): retry with `--cookies-from-browser chrome` (ask user first)
 - "no speech in range": clips.json times point at music/silence — error lists nearest dialogue
 - Captions out of sync: compare clips/NN/keep.json vs captions.ass — both must be edited-timeline
-- Two-host podcasts: tracker follows one subject (v1 limitation) — warn the user
+- Multi-host podcasts: the crop cuts to whoever is talking via lip-motion (active-speaker
+  detection), with ~1s switch dwell to avoid ping-pong. If it picks wrong (small/profile
+  faces, heavy crosstalk), pass `--no-active-speaker` to fall back to the v1 single-subject
+  crop. Eyeball switching with `--debug` (all faces drawn, talker boxed green).

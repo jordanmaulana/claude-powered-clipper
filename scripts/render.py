@@ -24,6 +24,10 @@ def validate(clip: dict, duration: float) -> None:
         raise ValueError(f"range {clip['start']}-{clip['end']} outside video (0-{duration:.0f}s)")
     if not clip.get("summary", "").strip():
         raise ValueError(f"clip {clip['id']} has no 'summary' — every clip must state its insight")
+    banned = [";", "—", "–", "--"]
+    hit = next((b for b in banned if b in clip["summary"]), None)
+    if hit:
+        raise ValueError(f"clip {clip['id']} summary uses banned '{hit}' — rewrite without it")
     if clip["end"] - clip["start"] > 120:
         print(f"  warn: clip {clip['id']} is {clip['end'] - clip['start']:.0f}s before gap removal (>120s)")
 
@@ -75,6 +79,7 @@ def render_clip(clip: dict, words: list[dict], meta: dict, workdir: Path,
 
     # Framing: face-track 16:9-ish sources; narrow sources scale-and-crop
     src_ratio = meta["width"] / meta["height"]
+    n_speakers = 0
     if src_ratio <= 9 / 16 + 0.01:
         mode = "pad"
         filters.append(f"scale={OUT_W}:{OUT_H}:force_original_aspect_ratio=increase,"
@@ -85,10 +90,13 @@ def render_clip(clip: dict, words: list[dict], meta: dict, workdir: Path,
             (lambda f: print(f"\r  face tracking: {f * 100:5.1f}%", end="", flush=True))
             if tty else None
         )
-        result = facetrack.track(flat, MODEL, on_progress)
+        result = facetrack.track(flat, MODEL, on_progress,
+                                 active_speaker=not args.no_active_speaker,
+                                 debug=args.debug)
         if tty:
             print("\r  face tracking: 100.0%")
         mode = result["mode"]
+        n_speakers = result.get("n_speakers", 0)
         x0 = result["x"][0]
         crop = f"crop=w={result['crop_w']}:h={result['crop_h']}:x={x0}:y=0"
         if mode == "tracked":
@@ -127,6 +135,7 @@ def render_clip(clip: dict, words: list[dict], meta: dict, workdir: Path,
         "duration": clip_duration,
         "cuts": len(intervals) - 1,
         "mode": mode,
+        "n_speakers": n_speakers,
     }
 
 
@@ -137,6 +146,8 @@ def main() -> None:
     parser.add_argument("--gap", type=float, default=None, help="max kept inter-word gap (s)")
     parser.add_argument("--pad", type=float, default=None, help="padding around speech runs (s)")
     parser.add_argument("--no-captions", action="store_true")
+    parser.add_argument("--no-active-speaker", action="store_true",
+                        help="disable lip-motion speaker switching (v1 single-subject crop)")
     parser.add_argument("--debug", action="store_true", help="write face-track preview video")
     args = parser.parse_args()
 
@@ -166,7 +177,8 @@ def main() -> None:
             validate(clip, meta["duration"])
             r = render_clip(clip, transcript["words"], meta, args.workdir, outdir, args)
             results.append((clip, r))
-            print(f"  done: {r['path'].name}  {r['duration']:.1f}s  cuts={r['cuts']}  mode={r['mode']}")
+            spk = f"  speakers={r['n_speakers']}" if r.get("n_speakers", 0) > 1 else ""
+            print(f"  done: {r['path'].name}  {r['duration']:.1f}s  cuts={r['cuts']}  mode={r['mode']}{spk}")
         except (ValueError, SystemExit) as e:
             failures.append((clip, str(e)))
             print(f"  FAILED: {e}")
