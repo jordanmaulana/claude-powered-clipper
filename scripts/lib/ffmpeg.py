@@ -33,15 +33,22 @@ def run(cmd: list[str], desc: str = "") -> None:
         sys.exit(f"error: {desc or cmd[0]} failed:\n{tail}")
 
 
-def run_with_progress(cmd: list[str], desc: str, total_s: float, log_path: Path) -> None:
-    """Run ffmpeg with a live percentage line on stdout; full stderr -> log_path."""
+def run_with_progress(cmd: list[str], desc: str, total_s: float, log_path: Path,
+                      show_progress: bool = True) -> None:
+    """Run ffmpeg with a live percentage line on stdout; full stderr -> log_path.
+
+    show_progress=False silences the live line (drained but not printed) — used
+    when clips render concurrently and competing \\r writers would garble output.
+    """
     full = [cmd[0], "-progress", "pipe:1", "-nostats", *cmd[1:]]
-    tty = sys.stdout.isatty()
+    tty = sys.stdout.isatty() and show_progress
     total = max(total_s, 0.01)
     last_pct = -10.0
     with open(log_path, "w") as log:
         proc = subprocess.Popen(full, stdout=subprocess.PIPE, stderr=log, text=True)
         for line in proc.stdout:
+            if not show_progress:
+                continue  # drain the pipe so ffmpeg doesn't block, but stay quiet
             key, _, val = line.strip().partition("=")
             # out_time_ms is ALSO microseconds (ffmpeg quirk); val may be "N/A"
             if key in ("out_time_us", "out_time_ms") and val.lstrip("-").isdigit():

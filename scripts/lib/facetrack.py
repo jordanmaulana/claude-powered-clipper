@@ -339,27 +339,36 @@ def _smooth(times: list[float], centers: list[float], width: float,
 
 def track(video: Path, model: Path,
           on_progress: Callable[[float], None] | None = None,
-          active_speaker: bool = True, debug: bool = False) -> dict:
+          active_speaker: bool = True, debug: bool = False,
+          out_dims: tuple[int, int] | None = None) -> dict:
     """Compute per-frame crop x positions for a 9:16 crop of `video`.
 
     With active_speaker=True (default) the crop cuts to whoever is talking via
     lip-motion; False forces the v1 single-subject (area+stickiness) scorer.
     debug=True attaches per-sample overlay data under result["_debug"].
 
+    `out_dims` (out_w, out_h) lets detection run on a downscaled proxy while the
+    returned crop geometry is expressed in the full-resolution source pixels: the
+    proxy and source share a timeline (same cut + fps), so detection centers map
+    linearly by out_w / proxy_width. Defaults to the proxy's own dimensions.
+
     Returns {"mode": "tracked"|"center", "crop_w", "crop_h", "fps", "n_frames",
-             "x": [per-frame int], "detection_rate": float, "n_speakers": int}
+             "x": [per-frame int], "detection_rate": float, "n_speakers": int,
+             "src_width": int}
     """
     times, raw, info = _detect_centers(video, model, on_progress, active_speaker, debug)
-    width, height = info["width"], info["height"]
-    crop_w = min(even(height * 9 / 16), even(width))
+    width, height = info["width"], info["height"]          # proxy (detection) dims
+    out_w, out_h = out_dims if out_dims else (width, height)
+    k = out_w / width                                       # proxy -> source scale
+    crop_w = min(even(out_h * 9 / 16), even(out_w))
     n_frames = info["n_frames"]
-    max_x = width - crop_w
+    max_x = out_w - crop_w
 
     detection_rate = sum(c is not None for c in raw) / max(1, len(raw))
     base = {
-        "crop_w": crop_w, "crop_h": height, "fps": info["fps"],
+        "crop_w": crop_w, "crop_h": out_h, "fps": info["fps"],
         "n_frames": n_frames, "detection_rate": round(detection_rate, 3),
-        "n_speakers": info.get("n_speakers", 0),
+        "n_speakers": info.get("n_speakers", 0), "src_width": out_w,
     }
     if "debug" in info:
         base["_debug"] = info["debug"]
@@ -367,9 +376,11 @@ def track(video: Path, model: Path,
         x = even(max_x / 2)
         return {**base, "mode": "center", "x": [x] * n_frames}
 
+    # Smooth in proxy coordinates (thresholds are fractions of proxy width), then
+    # scale the resolved centers into source pixels.
     centers = _smooth(times, _fill_misses(raw, width), width, info.get("switch_flags"))
     frame_times = np.arange(n_frames) / info["fps"]
-    interp = np.interp(frame_times, times, centers)
+    interp = np.interp(frame_times, times, centers) * k
     xs = [min(max(even(c - crop_w / 2), 0), max_x) for c in interp]
     return {**base, "mode": "tracked", "x": xs}
 
@@ -392,7 +403,10 @@ def write_debug_preview(video: Path, model: Path, result: dict, out: Path) -> No
     w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     writer = cv2.VideoWriter(str(out), cv2.VideoWriter_fourcc(*"mp4v"), fps, (w, h))
-    crop_w = result["crop_w"]
+    # crop_w / x[] are in source pixels; `video` here is the detection proxy, so
+    # scale the crop window back into proxy coords (detected boxes already are).
+    back = w / result.get("src_width", w)
+    crop_w = result["crop_w"] * back
     dbg = result.get("_debug")
     sample_times = np.asarray(dbg["times"]) if dbg else None
     for i in range(result["n_frames"]):
@@ -412,8 +426,8 @@ def write_debug_preview(video: Path, model: Path, result: dict, out: Path) -> No
                     cv2.putText(frame, f"talk {rec['chosen_motion']:.3f}",
                                 (int(bx), max(0, int(by) - 8)),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-        x = result["x"][min(i, len(result["x"]) - 1)]
-        cv2.rectangle(frame, (x, 0), (x + crop_w, h), (0, 255, 255), 4)
+        x = int(result["x"][min(i, len(result["x"]) - 1)] * back)
+        cv2.rectangle(frame, (x, 0), (int(x + crop_w), h), (0, 255, 255), 4)
         writer.write(frame)
     cap.release()
     writer.release()

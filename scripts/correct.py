@@ -19,7 +19,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from lib.correct import apply_corrections, is_single_token, merge_split_numbers
-from transcribe import build_markdown
+from lib.io import load_json
+from lib.markup import build_markdown
 
 
 def main() -> None:
@@ -35,7 +36,7 @@ def main() -> None:
     # Preserve the original Whisper output once; always correct from it.
     if not raw_json.exists():
         raw_json.write_text(out_json.read_text())
-    transcript = json.loads(raw_json.read_text())
+    transcript = load_json(raw_json)
 
     # Split-number merge always runs (deterministic, invisible in transcript.md).
     transcript, merged = merge_split_numbers(transcript)
@@ -54,7 +55,7 @@ def main() -> None:
     corrected, hits = apply_corrections(transcript, mapping)
     out_json.write_text(json.dumps(corrected, ensure_ascii=False))
 
-    meta = json.loads((args.workdir / "meta.json").read_text())
+    meta = load_json(args.workdir / "meta.json")
     (args.workdir / "transcript.md").write_text(build_markdown(corrected["segments"], meta))
 
     print(f"merged {merged} split number(s)")

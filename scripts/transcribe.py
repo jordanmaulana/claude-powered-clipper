@@ -7,16 +7,20 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from lib.correct import merge_split_numbers
+from lib.io import load_json
+from lib.markup import build_markdown
 
 DEFAULT_MODEL = "mlx-community/whisper-large-v3-turbo"
-BLOCK_WORDS = 50
-BLOCK_SECONDS = 60.0
 
 
-def fmt_ts(t: float) -> str:
-    h, rem = divmod(int(t), 3600)
-    m, s = divmod(rem, 60)
-    return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
+def _faster_whisper_name(model: str) -> str:
+    """Map an mlx-style repo id to a faster-whisper model name.
+
+    mlx uses e.g. "mlx-community/whisper-large-v3-turbo"; faster-whisper wants
+    the bare "large-v3-turbo". Plain names (already bare) pass through unchanged.
+    """
+    name = model.rsplit("/", 1)[-1]
+    return name[len("whisper-"):] if name.startswith("whisper-") else name
 
 
 def run_whisper(audio: Path, model: str) -> dict:
@@ -25,7 +29,7 @@ def run_whisper(audio: Path, model: str) -> dict:
         return mlx_whisper.transcribe(str(audio), path_or_hf_repo=model, word_timestamps=True)
     except ImportError:
         from faster_whisper import WhisperModel
-        wm = WhisperModel("large-v3", compute_type="int8")
+        wm = WhisperModel(_faster_whisper_name(model), compute_type="int8")
         segments, info = wm.transcribe(str(audio), word_timestamps=True)
         return {
             "language": info.language,
@@ -37,28 +41,6 @@ def run_whisper(audio: Path, model: str) -> dict:
                 for seg in segments
             ],
         }
-
-
-def build_markdown(segments: list[dict], meta: dict) -> str:
-    title = meta.get("title", "?")
-    channel = meta.get("channel", "?")
-    duration = fmt_ts(meta.get("duration", 0))
-    lines = [f"# {title} — channel: {channel} — {duration}", ""]
-
-    block_start, block_words = None, []
-    for seg in segments:
-        text = seg["text"].strip()
-        if not text:
-            continue
-        if block_start is None:
-            block_start = seg["s"]
-        block_words.extend(text.split())
-        if len(block_words) >= BLOCK_WORDS or seg["e"] - block_start >= BLOCK_SECONDS:
-            lines.append(f"[{fmt_ts(block_start)}] {' '.join(block_words)}")
-            block_start, block_words = None, []
-    if block_words:
-        lines.append(f"[{fmt_ts(block_start)}] {' '.join(block_words)}")
-    return "\n".join(lines) + "\n"
 
 
 def main() -> None:
@@ -99,8 +81,8 @@ def main() -> None:
             print(f"merged {merged} split number token(s)")
         out_json.write_text(json.dumps(transcript, ensure_ascii=False))
 
-    transcript = json.loads(out_json.read_text())
-    meta = json.loads((args.workdir / "meta.json").read_text())
+    transcript = load_json(out_json)
+    meta = load_json(args.workdir / "meta.json")
     out_md.write_text(build_markdown(transcript["segments"], meta))
 
     print(f"language: {transcript['language']}")

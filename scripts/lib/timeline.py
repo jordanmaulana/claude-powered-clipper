@@ -21,13 +21,7 @@ def keep_intervals(
     """
     if not words:
         return []
-    runs: list[list[dict]] = [[words[0]]]
-    for prev, cur in zip(words, words[1:]):
-        if cur["s"] - prev["e"] > max_gap:
-            runs.append([cur])
-        else:
-            runs[-1].append(cur)
-
+    runs = _runs(words, max_gap)
     intervals = [(max(0.0, run[0]["s"] - pad), run[-1]["e"] + pad) for run in runs]
     merged = [intervals[0]]
     for s, e in intervals[1:]:
@@ -36,6 +30,54 @@ def keep_intervals(
         else:
             merged.append((s, e))
     return merged
+
+
+def _runs(words: list[dict], max_gap: float) -> list[list[dict]]:
+    """Group words into continuous speech runs, splitting on gaps > max_gap."""
+    runs: list[list[dict]] = [[words[0]]]
+    for prev, cur in zip(words, words[1:]):
+        if cur["s"] - prev["e"] > max_gap:
+            runs.append([cur])
+        else:
+            runs[-1].append(cur)
+    return runs
+
+
+def midstatement_end(words: list[dict], end: float, max_gap: float = 0.5) -> float | None:
+    """Time the speaker actually pauses, if `end` lands inside a continuous speech run.
+
+    `end` is mid-statement when a run still has speech after it (run.first <= end < run.last);
+    return that run's last word end. Return None when `end` already sits at/after a pause
+    (between runs, or past the last word) — nothing to fix.
+    """
+    if not words:
+        return None
+    for run in _runs(words, max_gap):
+        if run[0]["s"] <= end < run[-1]["e"]:
+            return run[-1]["e"]
+    return None
+
+
+def snap_end(
+    words: list[dict],
+    end: float,
+    max_gap: float = 0.5,
+    max_extend: float = 6.0,
+) -> float:
+    """Auto-extend `end` to the next natural pause, capped at end + max_extend.
+
+    If `end` is not mid-statement, return it unchanged. If the pause is within the cap,
+    snap to it. Otherwise the run runs longer than the cap: back off to the last
+    sentence-final (.?!) word within [end, end + max_extend], or the cap itself if none.
+    """
+    pause = midstatement_end(words, end, max_gap)
+    if pause is None:
+        return end
+    if pause - end <= max_extend:
+        return pause
+    limit = end + max_extend
+    ends = [w["e"] for w in words if w["s"] > end and w["e"] <= limit and w["w"][-1:] in ".?!"]
+    return ends[-1] if ends else limit
 
 
 def remap(t: float, intervals: list[tuple[float, float]]) -> float:

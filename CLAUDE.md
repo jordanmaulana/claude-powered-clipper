@@ -55,6 +55,11 @@ hour-long video may yield 15+ clips, a thin one only 2–3. Do not stop after fi
 
 Selection criteria:
 - self-contained insight or story — no missing context, complete sentences at both ends
+- `end` must land on a **completed statement** — the last spoken word should be followed by
+  a real pause (gap > `max_gap`), never cut while the speaker is still talking. Verify
+  against `transcript.json` word timestamps: if the next word starts within `max_gap` of
+  your `end`, the speaker hasn't finished — push `end` to where they actually pause.
+  render.py warns (and `--snap-end` auto-fixes) but pick it right up front.
 - strong hook in the first 3 seconds
 - summarizeable — the clip delivers one clear insight/takeaway you can state in 1–2
   sentences. If you can't state it, drop the clip.
@@ -99,7 +104,12 @@ back to `mode=center` (no face found — normal for slides/B-roll).
 
 ## Iterating on feedback
 
+- Clips render concurrently (`--jobs N`, default min(4, cores/2)); `--jobs 1` for serial with
+  a live progress bar
 - Re-render one clip after editing clips.json: `render.py work/<id> --clip 3`
+- Mid-statement cut: render.py **warns** `clip N ends mid-statement ... pauses at T.Ts` when
+  `end` lands while the speaker is still talking. Bump `end` past that pause in clips.json and
+  re-render, or pass `--snap-end` to auto-extend every clip end to its next natural pause (capped)
 - Silence aggressiveness: `--gap 0.4` (tighter) / `--pad 0.2` (more breathing room)
 - Face-track tuning preview: `--debug` writes `work/<id>/clips/NN/track_debug.mp4`
   (yellow = crop window, gray = detected faces, green = active speaker + lip-motion score)

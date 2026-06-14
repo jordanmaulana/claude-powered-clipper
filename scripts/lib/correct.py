@@ -62,17 +62,21 @@ def apply_corrections(transcript: dict, mapping: dict[str, str]) -> tuple[dict, 
             word = {**word, "w": token}
         new_words.append(word)
 
-    # segments: regex whole-word replace on free text.
-    def _seg_sub(text: str) -> str:
-        def repl(m: re.Match) -> str:
-            nonlocal_key = m.group(0).lower()
-            hits[nonlocal_key] += 1
-            return lookup[nonlocal_key]
-        # one alternation of all keys, longest first, word-bounded, case-insensitive
-        pattern = r"\b(" + "|".join(re.escape(k) for k in sorted(lookup, key=len, reverse=True)) + r")\b"
-        return re.sub(pattern, repl, text, flags=re.IGNORECASE)
+    # segments: regex whole-word replace on free text. Compile the alternation once
+    # (longest key first, word-bounded, case-insensitive) and reuse across segments.
+    seg_pattern = re.compile(
+        r"\b(" + "|".join(re.escape(k) for k in sorted(lookup, key=len, reverse=True)) + r")\b",
+        re.IGNORECASE,
+    )
 
-    new_segments = [{**s, "text": _seg_sub(s["text"])} for s in transcript.get("segments", [])]
+    def repl(m: re.Match) -> str:
+        key = m.group(0).lower()
+        hits[key] += 1
+        return lookup[key]
+
+    new_segments = [
+        {**s, "text": seg_pattern.sub(repl, s["text"])} for s in transcript.get("segments", [])
+    ]
 
     corrected = {**transcript, "words": new_words, "segments": new_segments}
     return corrected, hits

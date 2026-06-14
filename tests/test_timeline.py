@@ -4,7 +4,14 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 import pytest
-from lib.timeline import keep_intervals, remap, total_duration, words_in_range
+from lib.timeline import (
+    keep_intervals,
+    midstatement_end,
+    remap,
+    snap_end,
+    total_duration,
+    words_in_range,
+)
 
 
 def w(text, s, e):
@@ -64,6 +71,68 @@ class TestRemap:
         ts = [i * 0.1 for i in range(60)]
         mapped = [remap(t, self.INTERVALS) for t in ts]
         assert mapped == sorted(mapped)
+
+
+# Real Za9UseDTu3E tail: clip ended at 797.0 mid-statement, runs to a pause at 801.82.
+ZA9_TAIL = [
+    w("kritis.", 796.74, 797.22),
+    w("Itu", 797.48, 797.76),
+    w("penting", 797.76, 798.06),
+    w("bagi.", 798.06, 798.26),
+    w("Itu", 798.26, 798.44),
+    w("adalah", 798.44, 798.74),
+    w("investasi.", 798.74, 799.34),
+    w("Penting", 799.72, 800.26),
+    w("bagi", 800.26, 800.62),
+    w("penguasa", 800.62, 801.10),
+    w("itu.", 801.10, 801.30),
+    w("Oh", 801.30, 801.40),
+    w("gitu", 801.40, 801.62),
+    w("ya.", 801.62, 801.82),
+    w("Karena", 802.56, 802.78),  # after 0.74s pause -> new run
+]
+
+
+class TestMidstatementEnd:
+    def test_none_when_at_pause(self):
+        # end after "world" (1.9) -> next word "next" at 3.0 is 1.1s away (> max_gap)
+        assert midstatement_end(WORDS, 1.95, max_gap=0.5) is None
+
+    def test_returns_run_end_when_midrun(self):
+        # end inside the [next, sentence] run -> pauses at sentence.e = 4.0
+        assert midstatement_end(WORDS, 3.2, max_gap=0.5) == pytest.approx(4.0)
+
+    def test_none_after_last_word(self):
+        assert midstatement_end(WORDS, 99.0, max_gap=0.5) is None
+
+    def test_respects_max_gap(self):
+        # gap next<-world is 1.1s; with max_gap=1.5 the two runs merge
+        assert midstatement_end(WORDS, 1.95, max_gap=1.5) == pytest.approx(4.0)
+
+    def test_za9_regression(self):
+        # the actual bug: end=797.0 should report the real pause at 801.82
+        assert midstatement_end(ZA9_TAIL, 797.0, max_gap=0.5) == pytest.approx(801.82)
+
+
+class TestSnapEnd:
+    def test_unchanged_at_pause(self):
+        assert snap_end(WORDS, 1.95, max_gap=0.5) == pytest.approx(1.95)
+
+    def test_extends_to_pause_within_cap(self):
+        assert snap_end(WORDS, 3.2, max_gap=0.5, max_extend=6.0) == pytest.approx(4.0)
+
+    def test_za9_regression(self):
+        assert snap_end(ZA9_TAIL, 797.0, max_gap=0.5, max_extend=6.0) == pytest.approx(801.82)
+
+    def test_cap_backs_off_to_last_sentence_word(self):
+        # cap at 797.0+2.0=799.0; last .?! word within window is "investasi." (798.74-799.34)
+        # whose e (799.34) exceeds 799.0 -> prior sentence word "bagi." ends 798.26
+        assert snap_end(ZA9_TAIL, 797.0, max_gap=0.5, max_extend=2.0) == pytest.approx(798.26)
+
+    def test_cap_no_sentence_word_returns_cap(self):
+        # run of bare tokens (no .?!), cap binds -> return end+max_extend
+        run = [w("a", 0.0, 0.2), w("b", 0.4, 0.6), w("c", 0.8, 1.0), w("d", 1.2, 1.4)]
+        assert snap_end(run, 0.1, max_gap=0.5, max_extend=0.5) == pytest.approx(0.6)
 
 
 class TestHelpers:
